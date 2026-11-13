@@ -119,6 +119,24 @@
           <img class="home-depth-heading" src="./assets/home-heading.png" width="1500" height="2104" alt="">
           <div class="home-depth-pins"><img src="./assets/home-pins.png" width="1500" height="2104" alt=""></div>
         </div>
+        <svg class="home-facade-reflections" viewBox="0 0 750 1052" aria-hidden="true" focusable="false">
+          <defs>
+            <linearGradient id="home-glass-sweep" x1=".4" y1=".2" x2=".49" y2=".83">
+              <stop offset=".28" stop-color="#d0fff4" stop-opacity="0"/>
+              <stop offset=".44" stop-color="#d9fff7" stop-opacity=".26"/>
+              <stop offset=".53" stop-color="#fff" stop-opacity=".7"/>
+              <stop offset=".565" stop-color="#f2fffc" stop-opacity=".46"/>
+              <stop offset=".72" stop-color="#c3fff0" stop-opacity="0"/>
+            </linearGradient>
+          </defs>
+          <g fill="url(#home-glass-sweep)">
+            <path d="M364 280 L420 279 C414 311 398 381 392 429 Q391 436 390 436 C387 405 375 342 364 280Z M390 496 C392 526 415 577 418 614 C423 648 410 682 401 712 C396 729 392 747 390 757 C387 732 377 699 368 670 C357 633 359 613 363 590 C368 562 384 521 390 496Z"/>
+            <path opacity=".8" d="M428 307 L429 592 C425 567 413 534 407 510 C395 465 399 435 404 405Z"/>
+            <path opacity=".75" d="M250 505 H278 V618 L270 613 H250Z M282 506 H306 V604 L295 625 L282 617Z"/>
+            <path opacity=".84" d="M448 457 L472 459 V802 L464 801 V725 L448 720Z"/>
+            <path opacity=".64" d="M515 631 L543 608 V669 L541 670 V808 L515 806Z"/>
+          </g>
+        </svg>
         <div class="home-star-lights" aria-hidden="true"></div>
         <canvas class="home-ignition" width="750" height="1052" aria-hidden="true" hidden></canvas>
         <span class="home-quiet-light" hidden aria-hidden="true"></span>

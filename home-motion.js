@@ -18,6 +18,36 @@
     let sensorX = 0, sensorY = 0, targetX = 0, targetY = 0, x = 0, y = 0;
     let frame = 0, previousTime = 0, waitTimer = 0, pointer = null;
     let sweepTimer = 0, lastSweepPosition = 0;
+    const glass = city.querySelector('#home-glass-sweep');
+    let reflectionTimer = 0, reflectionFrame = 0, lastReflection = 0, lastJolt = -Infinity;
+
+    function reflect(position, fromShake = false) {
+      if (!glass || !active || (!fromShake && Math.abs(position - lastReflection) < .018)) return;
+      lastReflection = position;
+      glass.setAttribute('gradientTransform', 'translate(0 ' + (position * .46).toFixed(3) + ')');
+      city.setAttribute('data-reflecting', '');
+      clearTimeout(reflectionTimer);
+      reflectionTimer = setTimeout(() => city.removeAttribute('data-reflecting'), 185);
+    }
+
+    function onShake(event) {
+      // Linear acceleration also catches a sideways shake held at a steady angle.
+      const a = event.acceleration;
+      if (!active || !a || performance.now() - lastJolt < 110) return;
+      const axis = [a.x, a.y, a.z].reduce((max, v) =>
+        Number.isFinite(v) && Math.abs(v) > Math.abs(max) ? v : max, 0);
+      if (Math.abs(axis) < 3.5) return;
+      lastJolt = performance.now();
+      const start = lastReflection;
+      const end = clamp((x + y * .4) * .4 + axis / 12);
+      cancelAnimationFrame(reflectionFrame);
+      function sweep(now) {
+        const t = Math.min(1, Math.max(0, (now - lastJolt) / 170));
+        reflect(start + (end - start) * t * (2 - t), true);
+        reflectionFrame = t < 1 ? requestAnimationFrame(sweep) : 0;
+      }
+      reflectionFrame = requestAnimationFrame(sweep);
+    }
 
     function updateSweep() {
       if (!primary) return;
@@ -37,6 +67,7 @@
       city.style.setProperty('--pins-x', (x * 10).toFixed(2) + 'px');
       city.style.setProperty('--pins-y', (y * 10).toFixed(2) + 'px');
       updateSweep();
+      if (performance.now() - lastJolt > 180) reflect(clamp(x * .78 + y * .64));
     }
     function step(now) {
       frame = 0;
@@ -65,6 +96,10 @@
       lastSweepPosition = 0;
       clearTimeout(sweepTimer);
       primary?.removeAttribute('data-sweeping');
+      clearTimeout(reflectionTimer);
+      cancelAnimationFrame(reflectionFrame); reflectionFrame = 0;
+      city.removeAttribute('data-reflecting');
+      lastReflection = 0; lastJolt = -Infinity;
       paint();
     }
 
@@ -125,11 +160,13 @@
       if (next !== active) {
         active = next;
         window.removeEventListener('deviceorientation', onTilt);
+        window.removeEventListener('devicemotion', onShake);
         clearTimeout(waitTimer);
         clearPose();
         waiting = sensorReady = false;
         if (active && hasSensor && permission !== 'denied' && (!requiresTap || permission === 'granted')) {
           window.addEventListener('deviceorientation', onTilt, {passive:true});
+          window.addEventListener('devicemotion', onShake, {passive:true});
           waiting = true;
           waitTimer = setTimeout(() => { waiting = false; renderControl(); }, 2500);
         }
@@ -214,6 +251,7 @@
         if (reduce.removeEventListener) reduce.removeEventListener('change',syncActivity);
         else reduce.removeListener(syncActivity);
         window.removeEventListener('deviceorientation',onTilt);
+        window.removeEventListener('devicemotion',onShake);
         clearTimeout(waitTimer); clearPose();
       }
     };

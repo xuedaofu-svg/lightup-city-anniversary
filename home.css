@@ -35,6 +35,10 @@
 .home-depth img, .home-depth-pins { position:absolute; inset:0; display:block; width:100%; height:100%; }
 .home-depth-scene { transform:translate(var(--city-x,0px),var(--city-y,0px)); }
 .home-depth-pins { transform:translate(var(--pins-x,0px),var(--pins-y,0px)); }
+.home-facade-reflections { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; transform:translate(var(--city-x,0px),var(--city-y,0px)); opacity:0; transition:opacity .36s ease-out; }
+.home-city[data-reflecting] .home-facade-reflections { opacity:.86; transition-duration:.08s; }
+.home-city.is-igniting .home-facade-reflections { visibility:hidden; }
+@media (prefers-reduced-motion:reduce) { .home-facade-reflections { display:none; } }
 .home-star-lights { position:absolute; inset:0; pointer-events:none; transform:translate(var(--city-x,0px),var(--city-y,0px)); }
 .home-depth-ready .home-star-lights { transform:translate(var(--pins-x,0px),var(--pins-y,0px)); }
 .home-glint { position:absolute; width:4%; aspect-ratio:1; opacity:0; filter:drop-shadow(0 0 1.4px #8671d0); animation:home-twinkle 4.9s infinite; }
