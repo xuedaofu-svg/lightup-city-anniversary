@@ -2,8 +2,8 @@
   'use strict';
 
   const stars = [
-    [506, 1096, 0.18], [174, 540, 1.20], [619, 621, 2.22],
-    [74, 677, 3.25], [537, 482, 4.28], [618, 760, 5.31], [142, 1020, 6.34]
+    [506, 1096, -0.32], [174, 540, -3.84], [619, 621, -1.76],
+    [74, 677, -2.48], [537, 482, -1.03], [618, 760, -4.54], [142, 1020, -3.15]
   ];
   const profiles = {
     xiaoming: ['小明', '十周年快乐！', '浙江'],
@@ -16,6 +16,15 @@
     ['福建', '4,380'], ['德国', '3,150']
   ];
   let ignitionModule;
+  function loadIgnition() {
+    if (!ignitionModule) {
+      ignitionModule = import('./assets/home-ignite.mjs?v=orbit-1').catch(() => {
+        ignitionModule = null;
+        return null;
+      });
+    }
+    return ignitionModule;
+  }
   // The complete, approved hero travels with the first HTML response. Keep its
   // source through home re-renders (including returning from the success sheet).
   const firstPaintSrc = document.getElementById('home-first-paint')?.src || './assets/home-city.webp';
@@ -110,7 +119,9 @@
           <img class="home-depth-heading" src="./assets/home-heading.png" width="1500" height="2104" alt="">
           <div class="home-depth-pins"><img src="./assets/home-pins.png" width="1500" height="2104" alt=""></div>
         </div>
+        <div class="home-star-lights" aria-hidden="true"></div>
         <canvas class="home-ignition" width="750" height="1052" aria-hidden="true" hidden></canvas>
+        <span class="home-quiet-light" hidden aria-hidden="true"></span>
       </div>
       <section class="home-participation" aria-label="点亮活动">
         <div class="home-counters">
@@ -118,7 +129,7 @@
           <div><strong>7</strong><span>已点亮地区</span></div>
         </div>
         <div class="home-buttons">
-          <button type="button" class="home-primary" data-home-action="ignite" data-ignite-city>${state.lit ? '已点亮 · 查看我的祝福' : '点亮热爱'}</button>
+          <button type="button" class="home-primary" data-home-action="ignite" data-ignite-city>${state.lit ? '重播点亮' : '点亮热爱'}</button>
           <button type="button" data-home-action="ownWish">我的祝福</button>
           <button type="button" data-home-action="invite">邀请好友</button>
         </div>
@@ -147,7 +158,8 @@
     const primary = root.querySelector('[data-home-action="ignite"]');
     const fallback = city.querySelector('.home-city-image');
     fallback.src = firstPaintSrc;
-    const pins = city.querySelector('.home-depth-pins');
+    const lights = city.querySelector('.home-star-lights');
+    const quietLight = city.querySelector('.home-quiet-light');
     stars.forEach(([x, y, delay]) => {
       const star = document.createElement('span');
       star.className = 'home-glint';
@@ -155,7 +167,7 @@
       star.style.left = (x / 750 * 100) + '%';
       star.style.top = ((y - 178) / 1052 * 100) + '%';
       star.style.animationDelay = delay + 's';
-      pins.append(star);
+      lights.append(star);
     });
     makeTicker(root.querySelector('.home-ticker'), state);
     container.replaceChildren(root);
@@ -173,44 +185,63 @@
 
     let active = true;
     let animationFrame = 0;
-    let playing = false;
-    if (!ignitionModule) {
-      ignitionModule = import('./assets/home-ignite.mjs').catch(() => null);
-    }
+    let playing = false, playback = 0, quietTimer = 0;
+    const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+    loadIgnition();
     function cancelIgnition() {
+      playback++;
       cancelAnimationFrame(animationFrame);
+      clearTimeout(quietTimer);
       animationFrame = 0;
       playing = false;
       primary.disabled = false;
-      primary.textContent = api.state.lit ? '已点亮 · 查看我的祝福' : '点亮热爱';
+      primary.textContent = api.state.lit ? '重播点亮' : '点亮热爱';
       canvas.hidden = true;
+      quietLight.hidden = true;
+      city.classList.remove('is-igniting');
       tilt?.resume();
     }
     async function playIgnition() {
       if (!active || playing) return;
-      if (api.state.lit) { api.ownWish(); return; }
-      if (matchMedia('(prefers-reduced-motion: reduce)').matches || !canvas.getContext('2d')) {
-        api.ignite();
-        return;
-      }
+      const replay = api.state.lit;
+      const run = ++playback;
       playing = true;
       tilt?.pause();
       primary.disabled = true;
-      primary.textContent = '正在点亮…';
-      const motion = await ignitionModule;
-      if (!active || !playing) return;
-      if (!motion) { cancelIgnition(); api.ignite(); return; }
+      primary.textContent = replay ? '重播中…' : '正在点亮…';
+      const box = city.getBoundingClientRect();
+      if (box.top < 0 || box.bottom > innerHeight) {
+        city.scrollIntoView({block:box.height > innerHeight ? 'end' : 'center', behavior:'instant'});
+      }
+      city.classList.add('is-igniting');
+      function finish() {
+        if (!active || run !== playback) return;
+        cancelIgnition();
+        if (!replay) api.ignite();
+      }
+      function showQuietLight() {
+        canvas.hidden = true;
+        quietLight.hidden = false;
+        quietTimer = setTimeout(finish, 650);
+      }
+      if (reducedMotion.matches || !canvas.getContext('2d')) { showQuietLight(); return; }
+      // A slow module request must not leave the action locked on a phone.
+      quietTimer = setTimeout(showQuietLight, 2400);
+      const motion = await loadIgnition();
+      if (!active || run !== playback || !quietLight.hidden) return;
+      clearTimeout(quietTimer);
+      if (!motion) { showQuietLight(); return; }
       canvas.hidden = false;
       const start = performance.now();
       function tick(now) {
-        if (!active || !playing) return;
+        if (!active || run !== playback) return;
+        if (reducedMotion.matches) { showQuietLight(); return; }
         const elapsed = (now - start) / 1000;
-        if (elapsed < 3.06) {
+        if (elapsed < motion.IGNITION_DURATION) {
           motion.drawCityIgnition(canvas, elapsed);
           animationFrame = requestAnimationFrame(tick);
         } else {
-          cancelIgnition();
-          api.ignite();
+          finish();
         }
       }
       animationFrame = requestAnimationFrame(tick);
@@ -225,7 +256,7 @@
       }
       const action = target.dataset.homeAction;
       if (action === 'ignite') {
-        if (api.state.lit) api.ownWish();
+        if (api.state.lit) playIgnition();
         else if (typeof api.prepareIgnite === 'function') api.prepareIgnite(playIgnition);
         else playIgnition();
       } else if (action && typeof api[action] === 'function') {
