@@ -7,7 +7,7 @@
   const clamp = value => Math.max(-1, Math.min(1, value));
   const degrees = Math.PI / 180;
 
-  window.attachCityMotion = function attachCityMotion(city, button, api) {
+  window.attachCityMotion = function attachCityMotion(city, button, api, primary) {
     const label = button.querySelector('[data-motion-label]');
     const reduce = matchMedia('(prefers-reduced-motion: reduce)');
     const orientation = window.DeviceOrientationEvent;
@@ -17,12 +17,26 @@
     let neutral = null, waiting = false, sensorReady = false, requested = false;
     let sensorX = 0, sensorY = 0, targetX = 0, targetY = 0, x = 0, y = 0;
     let frame = 0, previousTime = 0, waitTimer = 0, pointer = null;
+    let sweepTimer = 0, lastSweepPosition = 0;
+
+    function updateSweep() {
+      if (!primary) return;
+      const position = clamp(x + y * 0.32);
+      primary.style.setProperty('--sheen-x', (position * 47).toFixed(2) + '%');
+      // Accumulate small movements, but keep the reflection quiet at rest.
+      if (!active || Math.abs(position - lastSweepPosition) < 0.025) return;
+      lastSweepPosition = position;
+      primary.setAttribute('data-sweeping', '');
+      clearTimeout(sweepTimer);
+      sweepTimer = setTimeout(() => primary.removeAttribute('data-sweeping'), 175);
+    }
 
     function paint() {
       city.style.setProperty('--city-x', (x * 3).toFixed(2) + 'px');
       city.style.setProperty('--city-y', (y * 3).toFixed(2) + 'px');
       city.style.setProperty('--pins-x', (x * 10).toFixed(2) + 'px');
       city.style.setProperty('--pins-y', (y * 10).toFixed(2) + 'px');
+      updateSweep();
     }
     function step(now) {
       frame = 0;
@@ -48,6 +62,9 @@
       sensorX = sensorY = targetX = targetY = x = y = 0;
       pointer = null;
       neutral = null;
+      lastSweepPosition = 0;
+      clearTimeout(sweepTimer);
+      primary?.removeAttribute('data-sweeping');
       paint();
     }
 
@@ -165,11 +182,17 @@
     const enter = () => { departed = false; syncActivity(); };
     const observer = new MutationObserver(syncActivity);
     observer.observe(document.body, {attributes:true, attributeFilter:['class']});
+    const inView = new Set();
     const viewport = window.IntersectionObserver && new IntersectionObserver(entries => {
-      visible = entries[entries.length - 1].isIntersecting;
+      for (const entry of entries) {
+        if (entry.isIntersecting) inView.add(entry.target);
+        else inView.delete(entry.target);
+      }
+      visible = inView.size > 0;
       syncActivity();
     });
     viewport?.observe(city);
+    if (primary) viewport?.observe(primary);
     const bindings = [
       [button,'click',toggle], [city,'pointerdown',down], [city,'pointermove',move],
       [window,'pointerup',release], [window,'pointercancel',release], [city,'lostpointercapture',release],

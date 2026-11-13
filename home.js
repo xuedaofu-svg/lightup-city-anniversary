@@ -168,7 +168,7 @@
     artwork.forEach(image => image.addEventListener('load', revealLayers, {once: true}));
     revealLayers();
     const motionButton = root.querySelector('.home-motion-toggle');
-    const tilt = window.attachCityMotion?.(city, motionButton, api);
+    const tilt = window.attachCityMotion?.(city, motionButton, api, primary);
     if (tilt) motionButton.hidden = false;
 
     let active = true;
