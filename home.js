@@ -16,6 +16,9 @@
     ['福建', '4,380'], ['德国', '3,150']
   ];
   let ignitionModule;
+  // The complete, approved hero travels with the first HTML response. Keep its
+  // source through home re-renders (including returning from the success sheet).
+  const firstPaintSrc = document.getElementById('home-first-paint')?.src || './assets/home-city.webp';
 
   function icon(name) {
     const paths = {
@@ -93,6 +96,7 @@
     root.innerHTML = `
       <nav class="home-nav" aria-label="活动导航">
         <button type="button" class="home-back" aria-label="返回" data-home-action="back">${icon('back')}</button>
+        <button type="button" class="home-motion-toggle" hidden><span class="home-motion-glyph" aria-hidden="true"></span><span data-motion-label>重力感应</span></button>
         <div class="home-nav-links">
           <button type="button" data-home-action="prizes">${icon('gift')}我的奖品</button>
           <button type="button" data-home-action="rules">${icon('rules')}活动规则</button>
@@ -100,7 +104,12 @@
       </nav>
       <div class="home-city">
         <h1 class="home-sr-only">点亮你的城市</h1>
-        <img class="home-city-image" src="./assets/home-city.webp" width="750" height="1052" fetchpriority="high" alt="点亮你的城市，查看超人气新星。城市星标包括上海、北京、杭州、广州、宁波、厦门和伦敦。">
+        <img class="home-city-image" width="750" height="1052" alt="点亮你的城市，查看超人气新星。城市星标包括上海、北京、杭州、广州、宁波、厦门和伦敦。">
+        <div class="home-depth" aria-hidden="true">
+          <img class="home-depth-scene" src="./assets/home-scene.jpg" width="1125" height="1578" fetchpriority="high" alt="">
+          <img class="home-depth-heading" src="./assets/home-heading.png" width="1500" height="2104" alt="">
+          <div class="home-depth-pins"><img src="./assets/home-pins.png" width="1500" height="2104" alt=""></div>
+        </div>
         <canvas class="home-ignition" width="750" height="1052" aria-hidden="true" hidden></canvas>
       </div>
       <section class="home-participation" aria-label="点亮活动">
@@ -136,19 +145,31 @@
     const city = root.querySelector('.home-city');
     const canvas = root.querySelector('.home-ignition');
     const primary = root.querySelector('[data-home-action="ignite"]');
-    stars.forEach(([x, y, delay], i) => {
-      const star = document.createElement('img');
-      star.src = './assets/home-glint-' + i + '.webp';
-      star.alt = '';
+    const fallback = city.querySelector('.home-city-image');
+    fallback.src = firstPaintSrc;
+    const pins = city.querySelector('.home-depth-pins');
+    stars.forEach(([x, y, delay]) => {
+      const star = document.createElement('span');
       star.className = 'home-glint';
       star.setAttribute('aria-hidden', 'true');
-      star.style.left = ((x - 28) / 750 * 100) + '%';
-      star.style.top = ((y - 178 - 28) / 1052 * 100) + '%';
+      star.style.left = (x / 750 * 100) + '%';
+      star.style.top = ((y - 178) / 1052 * 100) + '%';
       star.style.animationDelay = delay + 's';
-      city.insertBefore(star, canvas);
+      pins.append(star);
     });
     makeTicker(root.querySelector('.home-ticker'), state);
     container.replaceChildren(root);
+    const artwork = [...city.querySelectorAll('.home-depth img')];
+    function revealLayers() {
+      if (artwork.every(image => image.complete && image.naturalWidth > 0)) {
+        city.classList.add('home-depth-ready');
+      }
+    }
+    artwork.forEach(image => image.addEventListener('load', revealLayers, {once: true}));
+    revealLayers();
+    const motionButton = root.querySelector('.home-motion-toggle');
+    const tilt = window.attachCityMotion?.(city, motionButton, api);
+    if (tilt) motionButton.hidden = false;
 
     let active = true;
     let animationFrame = 0;
@@ -163,6 +184,7 @@
       primary.disabled = false;
       primary.textContent = api.state.lit ? '已点亮 · 查看我的祝福' : '点亮热爱';
       canvas.hidden = true;
+      tilt?.resume();
     }
     async function playIgnition() {
       if (!active || playing) return;
@@ -172,6 +194,7 @@
         return;
       }
       playing = true;
+      tilt?.pause();
       primary.disabled = true;
       primary.textContent = '正在点亮…';
       const motion = await ignitionModule;
@@ -213,6 +236,7 @@
     return function cleanHome() {
       active = false;
       cancelIgnition();
+      tilt?.destroy();
     };
   };
 })();

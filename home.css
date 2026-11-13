@@ -22,9 +22,20 @@
 .home-screen .home-nav-links button { display: inline-flex; gap: 5px; align-items: center; justify-content: center; position: relative; height: 31px; padding: 0 9px; border: 1px solid #b1a0cb; border-radius: 8px; background: #fffdf9; color: #27224f; font-size: clamp(12px, 3.1cqw, 16px); font-weight: 600; }
 .home-nav-links button::after { content: ""; position: absolute; inset: -6px -2px; }
 .home-nav-links svg { display: block; width: 15px; height: 15px; }
-.home-city { position: relative; width: 100%; aspect-ratio: 750 / 1052; background: #f8f7f5; }
+.home-screen .home-motion-toggle { display:inline-flex; align-items:center; gap:5px; min-height:44px; margin-right:auto; padding:0 7px 0 0; color:#625579; font-size:12px; line-height:1; white-space:nowrap; }
+.home-motion-glyph { display:inline-block; position:relative; width:11px; height:15px; border:1.3px solid currentColor; border-radius:3px; transform:rotate(-12deg); }
+.home-motion-glyph::after { content:""; position:absolute; width:3px; height:1px; border-radius:1px; background:currentColor; left:3px; bottom:2px; }
+.home-motion-toggle[data-motion-state="live"] .home-motion-glyph { color:#583c95; background:#e9e2fa; }
+.home-city { position: relative; width: 100%; aspect-ratio: 750 / 1052; overflow:hidden; touch-action:pan-y pinch-zoom; user-select:none; -webkit-user-select:none; background: #f8f7f5; }
 .home-city-image { display: block; width: 100%; height: 100%; }
-.home-glint { position: absolute; display: block; width: 7.466667%; height: auto; opacity: 0; pointer-events: none; animation: home-twinkle 7.2s infinite; }
+.home-city img { pointer-events:none; -webkit-user-drag:none; }
+.home-city:not(.home-depth-ready) .home-city-image { transform:translate(var(--city-x,0px),var(--city-y,0px)); }
+.home-depth { position:absolute; inset:0; visibility:hidden; pointer-events:none; }
+.home-depth-ready .home-depth { visibility:visible; }
+.home-depth img, .home-depth-pins { position:absolute; inset:0; display:block; width:100%; height:100%; }
+.home-depth-scene { transform:translate(var(--city-x,0px),var(--city-y,0px)); }
+.home-depth-pins { transform:translate(var(--pins-x,0px),var(--pins-y,0px)); }
+.home-glint { position:absolute; display:block; width:2.9%; aspect-ratio:1; transform:translate(-50%,-50%); opacity:0; pointer-events:none; background:#fff; clip-path:polygon(50% 0,61% 39%,100% 50%,61% 60%,50% 100%,40% 61%,0 50%,40% 39%); animation:home-twinkle 7.2s infinite; }
 @keyframes home-twinkle {
   0% { opacity: 0; animation-timing-function: cubic-bezier(0, 0, .58, 1); }
   4.30556% { opacity: 1; }
