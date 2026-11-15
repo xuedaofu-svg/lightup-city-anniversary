@@ -57,22 +57,52 @@
 }
 .extra-dialog h2 { font-size: 22px; line-height: 1.35; font-weight: 700; }
 .extra-dialog p { color: #6e647b; font-size: 13px; line-height: 1.65; }
-.extra-success-heading { display: flex; align-items: center; gap: 12px; }
-.extra-success-badge { flex: none; width: 59px; height: 59px; }
-.extra-success-heading p { margin-top: 5px; }
-.extra-record {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  margin: 20px 0;
-  padding: 14px 16px;
-  border-radius: 12px;
-  background: #f6f3fa;
+.app-layer--modal .extra-success-surface {
+  width: min(100%, 335px);
+  max-height: 100%;
+  background: transparent;
 }
-.extra-record > div { display: grid; gap: 3px; }
-.extra-record > div + div { border-left: 1px solid #dfd8e8; padding-left: 16px; }
-.extra-record span { font-size: 11px; color: #71677e; }
-.extra-record strong { font-size: 16px; font-weight: 600; }
-.extra-record .extra-sno { font-variant-numeric: tabular-nums; letter-spacing: .02em; }
+.extra-success {
+  padding: 18px 20px 20px;
+  border-radius: 18px;
+  text-align: center;
+}
+.extra-success-badge { display: block; width: 108px; height: 108px; margin: 0 auto 8px; }
+.extra-success h2 { font-size: 24px; line-height: 32px; color: #392b53; }
+.extra-success .extra-success-city { margin-top: 6px; font-size: 16px; line-height: 24px; color: #574b68; }
+.extra-success-city span { margin-inline: 3px; color: #8a7b9c; }
+.extra-record {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 42px;
+  margin: 14px 0 0;
+  padding: 6px 14px;
+  border-radius: 8px;
+  background: #f2eef9;
+}
+.extra-record dt { color: #6b607a; font-size: 13px; }
+.extra-record dd {
+  margin: 0;
+  color: #564182;
+  font-size: 18px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .025em;
+}
+.extra-success .extra-success-note { margin: 12px 0; font-size: 13px; line-height: 20px; color: #6e647b; }
+.extra-success .extra-btn { min-height: 48px; }
+.extra-success .extra-primary { display: flex; justify-content: center; align-items: center; gap: 6px; }
+.extra-success .extra-btn + .extra-plain {
+  margin-top: 8px;
+  border-color: #e2dce9;
+  background: #fbf9fc;
+}
+@media (max-height: 480px) {
+  .extra-success { padding-block: 12px; }
+  .extra-success-badge { width: 72px; height: 72px; margin-bottom: 4px; }
+}
 .extra-btn {
   width: 100%;
   min-height: 46px;

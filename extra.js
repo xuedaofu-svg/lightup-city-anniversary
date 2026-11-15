@@ -28,18 +28,19 @@
   }
 
   function success(api) {
-    const el = api.show(`<section class="extra-dialog" aria-labelledby="extra-light-title">
-      <div class="extra-success-heading">
-        ${badge(true, 'extra-success-badge')}
-        <div><h2 id="extra-light-title">点亮成功</h2><p>十周年限定勋章已收入「我的奖品」</p></div>
-      </div>
-      <div class="extra-record">
-        <div><span>我的热爱之地</span><strong>上海</strong></div>
-        <div><span>点亮序号</span><strong class="extra-sno">NO. 070260</strong></div>
-      </div>
-      <button class="extra-btn extra-primary" data-action="wish" type="button">留下祝福并分享</button>
-      <button class="extra-btn extra-plain" data-action="later" type="button">稍后再说</button>
+    const el = api.show(`<section class="extra-dialog extra-success" aria-labelledby="extra-light-title">
+      ${badge(true, 'extra-success-badge')}
+      <h2 id="extra-light-title">点亮成功</h2>
+      <p class="extra-success-city">你的热爱之地 <span aria-hidden="true">·</span> 上海</p>
+      <dl class="extra-record"><dt>点亮序号</dt><dd>NO. 070260</dd></dl>
+      <p class="extra-success-note">十周年勋章已收入「我的奖品」</p>
+      <button class="extra-btn extra-primary" data-action="wish" type="button">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m10 3 2.2 6.8L19 12l-6.8 2.2L10 21l-2.2-6.8L1 12l6.8-2.2L10 3Z"/><path d="M19 2v6m-3-3h6" stroke-linecap="round"/></svg>
+        留下祝福并分享
+      </button>
+      <button class="extra-btn extra-plain" data-action="later" type="button">关闭</button>
     </section>`, {modal:true});
+    el.classList.add('extra-success-surface');
     bind(el, {wish:() => api.ownWish(), later:() => api.home()});
   }
 
