@@ -29,7 +29,7 @@
 
   function success(api) {
     const el = api.show(`<section class="extra-dialog extra-success" aria-labelledby="extra-light-title">
-      ${badge(true, 'extra-success-badge')}
+      <span class="extra-success-badge">${badge(true, 'extra-success-badge-image')}</span>
       <h2 id="extra-light-title">点亮成功</h2>
       <p class="extra-success-city">你的热爱之地 <span aria-hidden="true">·</span> 上海</p>
       <dl class="extra-record"><dt>点亮序号</dt><dd>NO. 070260</dd></dl>

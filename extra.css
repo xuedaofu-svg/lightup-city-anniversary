@@ -115,7 +115,38 @@
   border-radius: 18px;
   text-align: center;
 }
-.extra-success-badge { display: block; width: 108px; height: 108px; margin: 0 auto 8px; }
+.extra-success-badge { display: block; position: relative; width: 108px; height: 108px; margin: 0 auto 8px; }
+.extra-success-badge-image { display: block; width: 100%; height: 100%; }
+@media (prefers-reduced-motion: no-preference) {
+  @supports (mask-image: url("")) or (-webkit-mask-image: url("")) {
+    .extra-success-badge::before,
+    .extra-success-badge::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0;
+      -webkit-mask: url("./assets/extra-medal-earned.png") center / contain no-repeat;
+      mask: url("./assets/extra-medal-earned.png") center / contain no-repeat;
+      background-size: 250% 100%;
+      background-repeat: no-repeat;
+      animation: lightup-medal-sheen 640ms cubic-bezier(.36,.03,.31,.98) 780ms 1;
+    }
+    .extra-success-badge::before {
+      background-image: linear-gradient(112deg, transparent 40%, #d6ecff18 46%, #ffffff56 50%, #ddfff025 53%, transparent 59%);
+    }
+    .extra-success-badge::after {
+      mask-mode: luminance;
+      background-image: linear-gradient(112deg, transparent 44%, #e6dcff72 48%, #ffffffed 49.8%, #d4fff7ed 50.8%, #95e5f17a 52.5%, transparent 56%);
+    }
+  }
+}
+@keyframes lightup-medal-sheen {
+  from { background-position: 100% 50%; opacity: 0; }
+  12% { opacity: 1; }
+  86% { opacity: 1; }
+  to { background-position: 0% 50%; opacity: 0; }
+}
 .extra-success h2 { font-size: 24px; line-height: 32px; color: #392b53; }
 .extra-success .extra-success-city { margin-top: 6px; font-size: 16px; line-height: 24px; color: #574b68; }
 .extra-success-city span { margin-inline: 3px; color: #8a7b9c; }
