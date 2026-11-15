@@ -227,6 +227,9 @@
       tilt?.pause();
       primary.disabled = true;
       primary.textContent = replay ? '重播中…' : '正在点亮…';
+      // Warm the reward artwork while the city lights up on slower connections.
+      new Image().src = './assets/extra-medal-earned.png';
+      if (!reducedMotion.matches) new Image().src = './assets/poster-anniversary.png';
       const box = city.getBoundingClientRect();
       if (box.top < 0 || box.bottom > innerHeight) {
         city.scrollIntoView({block:box.height > innerHeight ? 'end' : 'center', behavior:'instant'});
@@ -235,7 +238,7 @@
       function finish() {
         if (!active || run !== playback) return;
         cancelIgnition();
-        if (!replay) api.ignite();
+        api.ignite();
       }
       function showQuietLight() {
         canvas.hidden = true;

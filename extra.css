@@ -62,6 +62,54 @@
   max-height: 100%;
   background: transparent;
 }
+@media (prefers-reduced-motion: no-preference) {
+  .app-layer--modal .extra-success-surface {
+    position: relative;
+    overflow: visible;
+    transform-style: preserve-3d;
+    animation: reveal-lightup-card 960ms linear;
+  }
+  .extra-success-surface::before,
+  .extra-success-surface > .extra-success {
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
+  }
+  .extra-success-surface::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border: 1px solid #d6cce8;
+    border-radius: inherit;
+    background:
+      url('./assets/poster-anniversary.png') center / 58px auto no-repeat,
+      radial-gradient(ellipse at 90% 80%, #cdede880, transparent 55%),
+      linear-gradient(125deg, #ded4f0, #faf8fd 42%, #e9e0f5 78%, #f5f1fb);
+    transform: rotateY(180deg);
+    pointer-events: none;
+  }
+  .extra-success-surface > .extra-success {
+    max-height: calc(100vh - 36px);
+    max-height: calc(100dvh - 36px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    transform: rotateY(0deg);
+  }
+}
+@keyframes reveal-lightup-card {
+  from {
+    transform: perspective(1000px) rotateY(-168deg) scale(.92);
+    animation-timing-function: ease-out;
+  }
+  14% {
+    transform: perspective(1000px) rotateY(-160deg) scale(.94);
+    animation-timing-function: cubic-bezier(.46,.06,.76,.45);
+  }
+  47% {
+    transform: perspective(1000px) rotateY(-90deg) scale(.96);
+    animation-timing-function: cubic-bezier(.20,.60,.23,1);
+  }
+  to { transform: perspective(1000px) rotateY(0deg) scale(1); }
+}
 .extra-success {
   padding: 18px 20px 20px;
   border-radius: 18px;
