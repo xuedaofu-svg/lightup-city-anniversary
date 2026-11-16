@@ -8,7 +8,6 @@
   const defaultWish = '十年同行，\n愿每一次出发都闪闪发光！';
   const placeholder = '把你的祝福，\n写给下一个闪光的十年。';
   const templates = [defaultWish, '一路热爱，一路同行。', '未来可期，\n一起驶向下一个十年！'];
-  const typeset = [defaultWish,'十周年快乐！','一起点亮未来','Happy 10th',templates[1],templates[2],placeholder];
   const senders = {
     xiaoming: {name:'小明', initial:'明', region:'浙江', english:'ZHEJIANG', message:'十周年快乐！'},
     xingxing: {name:'星星', initial:'星', region:'广东', english:'GUANGDONG', message:'一起点亮未来'},
@@ -43,7 +42,7 @@
   let materials;
   function preload() {
     if (!materials) materials = Promise.all([
-      image('city.webp'), image('brand.png'), image('anniversary.png'), image('typeset.png'),
+      image('city.webp'), image('brand.png'), image('anniversary.png'),
       import(asset('qr.js')).then(lib => lib.qrModules(activityURL()))
     ]).catch(error => { materials = null; throw error; });
     return materials;
@@ -61,9 +60,9 @@
   const posterScale = 750 / 606;
   const titleBox = {x: 48, y: 182, width: 654, height: 196};
   const titleTiers = [
-    {size: 64, leading: 85, rows: 1},
-    {size: 42, leading: 52, rows: 2},
-    {size: 30, leading: 40, rows: 3}
+    {size: 64, leading: 85, minRows: 1, maxRows: 1},
+    {size: 42, leading: 52, minRows: 2, maxRows: 3},
+    {size: 30, leading: 38, minRows: 4, maxRows: 4}
   ];
   const graphemes = typeof Intl.Segmenter === 'function'
     ? new Intl.Segmenter(undefined, {granularity: 'grapheme'}) : null;
@@ -78,10 +77,12 @@
     return {text: line, inset, width, ascent: m.actualBoundingBoxAscent || 0,
       descent: m.actualBoundingBoxDescent || 0};
   }
-  function wrapParagraph(ctx, text) {
-    if (!text) return [measureLine(ctx, '')];
-    const chars = graphemes
+  function letters(text) {
+    return graphemes
       ? Array.from(graphemes.segment(text), part => part.segment) : Array.from(text);
+  }
+  function wrapParagraph(ctx, text) {
+    const chars = letters(text);
     const lines = [];
     for (let start = 0; start < chars.length;) {
       let end = start + 1;
@@ -101,45 +102,109 @@
     }
     return lines;
   }
+  // Find an even, readable set of breaks for a specified number of lines.
+  // Scores are in font-size units so preview and 2× export choose identical cuts.
+  function balancedLines(ctx, text, rows, px, allowCompression) {
+    const chars = letters(text);
+    const idealWidth = ctx.measureText(text).width / rows;
+    const memo = new Map();
+    function choose(start, left) {
+      if (left === 0) return start === chars.length ? {cost: 0, lines: []} : null;
+      const key = start + '/' + left;
+      if (memo.has(key)) return memo.get(key);
+      let best = null;
+      for (let end = start + 1; end <= chars.length - left + 1; end++) {
+        if (left === 1 && end < chars.length) continue;
+        const line = measureLine(ctx, chars.slice(start, end).join(''));
+        const over = Math.max(0, line.width - titleBox.width);
+        if (over > 0 && !allowCompression) continue;
+        const rest = choose(end, left - 1);
+        if (!rest) continue;
+        let cost = rest.cost + ((line.width - idealWidth) / px) ** 2 + 100 * (over / px) ** 2;
+        if (end < chars.length) {
+          const before = chars[end - 1], after = chars[end];
+          if (closingMark.test(after) || openingMark.test(before)) cost += 150;
+          if (latinWord.test(before) && latinWord.test(after)) cost += 80;
+          if (!/[，。、！？；：,.!?;:\s]$/.test(before)) cost += 14;
+        }
+        if (!best || cost < best.cost) best = {cost, lines: [line, ...rest.lines]};
+      }
+      memo.set(key, best);
+      return best;
+    }
+    return choose(0, rows)?.lines;
+  }
   function fitTitle(ctx, message) {
-    const paragraphs = message.replace(/\r\n?/g, '\n').split('\n');
-    function tryTier({size, leading, rows}, parts) {
-      const px = size * posterScale;
-      const lineHeight = leading * posterScale;
+    const paragraphs = message.split(/\r\n?|\n/).map(line => line.trim()).filter(Boolean);
+    for (const tier of titleTiers) {
+      const px = tier.size * posterScale;
+      const lineHeight = tier.leading * posterScale;
       ctx.font = '600 ' + px + 'px ' + display;
-      const lines = parts.flatMap(line => wrapParagraph(ctx, line));
-      if (lines.length > rows || lines.some(line => line.width > titleBox.width)) return null;
+      const small = tier === titleTiers[2];
+      let blocks = paragraphs.map(text => ({text, lines: wrapParagraph(ctx, text)}));
+      let count = blocks.reduce((sum, block) => sum + block.lines.length, 0);
+      if (count > tier.maxRows) {
+        if (!small) continue;
+        // When manual breaks would cross the skyline, reflow the display copy.
+        const text = paragraphs.join(' ');
+        const lines = balancedLines(ctx, text, tier.maxRows, px, true);
+        blocks = [{text, lines}];
+        count = lines.length;
+      }
+      // Keep an authored newline whenever it fits. Allocate additional lines to
+      // the widest paragraph until a medium greeting has ≥2 or a small one has 4.
+      const rows = blocks.map(block => block.lines.length);
+      while (count < tier.minRows) {
+        let widest = -1, maxWidth = -1;
+        blocks.forEach((block, i) => {
+          const width = ctx.measureText(block.text).width / rows[i];
+          if (rows[i] < letters(block.text).length && width > maxWidth) {
+            widest = i; maxWidth = width;
+          }
+        });
+        if (widest < 0) break;
+        rows[widest]++; count++;
+      }
+      const lines = blocks.flatMap((block, i) => {
+        const widths = block.lines.map(line => line.width);
+        const ragged = Math.min(...widths) < Math.max(...widths) * 0.55;
+        if (rows[i] !== block.lines.length || ragged) {
+          return balancedLines(ctx, block.text, rows[i], px, small) || block.lines;
+        }
+        return block.lines;
+      });
       const ascent = Math.max(...lines.map(line => line.ascent));
       const descent = Math.max(...lines.map(line => line.descent));
       const baseline = Math.max(ascent, (lineHeight - ascent - descent) / 2 + ascent);
       const bottom = (lines.length - 1) * lineHeight + baseline + descent;
-      return bottom <= titleBox.height ? {lines, lineHeight, baseline} : null;
+      if (bottom <= titleBox.height || small) {
+        return {lines, lineHeight, baseline, inkHeight: bottom};
+      }
     }
-    for (const tier of titleTiers) {
-      const fit = tryTier(tier, paragraphs);
-      if (fit) return fit;
-    }
-    // Reflow excessive hard breaks within the same title area. All submitted
-    // characters remain in the displayed blessing and original saved message.
-    const reflowed = [paragraphs.join(' ')];
-    for (let size = 30; size > 0; size--) {
-      const fit = tryTier({size, leading: size * 4 / 3, rows: 3}, reflowed);
-      if (fit) return fit;
-    }
-    throw new Error('祝福文字排版失败');
   }
-  function greeting(ctx, atlas, message) {
-    const match = typeset.indexOf(message);
-    if (match !== -1) {
-      ctx.drawImage(atlas,0,294*match,1308,294,48,182,654,147);
-      return;
-    }
+  function greeting(ctx, message) {
     ctx.textAlign = 'left';
     ctx.fillStyle = '#30243f';
     ctx.textBaseline = 'alphabetic';
-    const {lines, lineHeight, baseline} = fitTitle(ctx, message);
-    lines.forEach((line, i) => ctx.fillText(line.text, titleBox.x + line.inset,
-      titleBox.y + baseline + i * lineHeight));
+    const {lines, lineHeight, baseline, inkHeight} = fitTitle(ctx, message);
+    ctx.save();
+    // Tall combining marks can exceed a font's line box even at small sizes.
+    if (inkHeight > titleBox.height) {
+      ctx.translate(0, titleBox.y); ctx.scale(1, titleBox.height / inkHeight);
+      ctx.translate(0, -titleBox.y);
+    }
+    lines.forEach((line, i) => {
+      const y = titleBox.y + baseline + i * lineHeight;
+      if (line.width <= titleBox.width) ctx.fillText(line.text, titleBox.x + line.inset, y);
+      else {
+        // Some multi-em glyphs can fill a line even at the smallest tier.
+        ctx.save();
+        ctx.translate(titleBox.x, 0); ctx.scale(titleBox.width / line.width, 1);
+        ctx.fillText(line.text, line.inset, y);
+        ctx.restore();
+      }
+    });
+    ctx.restore();
   }
   function drawQR(ctx, modules) {
     const left = 597, top = 1114, size = 108;
@@ -154,7 +219,7 @@
     }));
   }
   async function draw(canvas, data, full = false) {
-    const [city,logo,ten,atlas,qr] = await preload();
+    const [city,logo,ten,qr] = await preload();
     const scale=full?2:1;
     canvas.width=750*scale; canvas.height=1300*scale;
     const c=canvas.getContext('2d');
@@ -166,7 +231,7 @@
     write(c,'10TH ANNIVERSARY',602,52,13,600,'#584d65','right');
     write(c,'LIGHT UP YOUR CITY',602,70,13,600,'#584d65','right');
     write(c,data.english+'  /  '+data.region+'领地',48,141,17,550,'#554966','left',652);
-    greeting(c,atlas,data.message || placeholder);
+    greeting(c,data.message || placeholder);
     c.save();
     c.beginPath(); c.rect(0,1080,750,220); c.clip();
     if ('filter' in c) {
@@ -230,6 +295,11 @@
     return '<div class="p-paper"><img data-photo alt=""><button type="button" data-loading class="p-loading" aria-live="polite">正在生成海报</button></div>';
   }
   const fitExample = '十周年快乐！十周年快乐！十周年快乐，十周年快乐！';
+  const trialMessages = [
+    '愿每座城都有星光',
+    '愿每一座城都亮起一盏灯。愿每一段路都有朋友同行。下一个十年，我们再出发。',
+    '十年前，我们在杭州第一次出发。十年后，想和你沿着钱塘江再走一程，看看这座城的灯，也看看一路同行的你。'
+  ];
   function edit(api, trial = false) {
     if(!trial && api.state.poster?.message) return view(api,'mine');
     const el=api.show('<section class="p-page">'+nav('制作祝福海报')+
@@ -241,6 +311,13 @@
     closeOn(el,api);
     const inp=el.querySelector('textarea'), note=el.querySelector('#wish-error'), counter=el.querySelector('#wish-count'), confirm=el.querySelector('[data-confirm]');
     const canvas=el.querySelector('[data-preview]');
+    if (trial) {
+      const labels = ['单行', '三行', '50 字'];
+      el.querySelectorAll('.p-phrases button').forEach((button, i) => {
+        button.textContent = labels[i];
+        button.addEventListener('click', () => {inp.value = trialMessages[i]; refresh();});
+      });
+    }
     let selected=0, raf=0, revision=0;
     function refresh() {
       const value=inp.value, n=count(value);
@@ -255,8 +332,10 @@
       }).catch(()=>{note.textContent='预览加载失败，可重新打开海报';}));
     }
     function select(index){ selected=index;inp.value=templates[index];refresh();}
-    listen(el,'[data-switch]',()=>select((selected+1)%templates.length));
-    listen(el,'[data-first]',()=>select(1)); listen(el,'[data-next]',()=>select(2));
+    if (!trial) {
+      listen(el,'[data-switch]',()=>select((selected+1)%templates.length));
+      listen(el,'[data-first]',()=>select(1)); listen(el,'[data-next]',()=>select(2));
+    }
     inp.addEventListener('input',refresh);
     inp.value=trial?fitExample:templates[0];refresh();
     confirm.addEventListener('click',()=>{
