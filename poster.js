@@ -56,21 +56,77 @@
     if (maxWidth) ctx.fillText(text,x,y,maxWidth);
     else ctx.fillText(text,x,y);
   }
-  function layoutLines(ctx, text, maxWidth) {
+  // The poster artwork is drawn on a 750 px master. These type specifications
+  // are measured on the 606 px poster instance in the Figma dialog.
+  const posterScale = 750 / 606;
+  const titleBox = {x: 48, y: 182, width: 654, height: 196};
+  const titleTiers = [
+    {size: 64, leading: 85, rows: 1},
+    {size: 42, leading: 52, rows: 2},
+    {size: 30, leading: 40, rows: 3}
+  ];
+  const graphemes = typeof Intl.Segmenter === 'function'
+    ? new Intl.Segmenter(undefined, {granularity: 'grapheme'}) : null;
+  const latinWord = /[A-Za-z0-9]/;
+  const closingMark = /^[，。！？：；、）】》」』”’.,!?;:%)]/;
+  const openingMark = /^[（【《「『“‘(]$/;
+
+  function measureLine(ctx, line) {
+    const m = ctx.measureText(line);
+    const inset = Math.max(0, m.actualBoundingBoxLeft || 0);
+    const width = inset + Math.max(m.width, m.actualBoundingBoxRight || 0);
+    return {text: line, inset, width, ascent: m.actualBoundingBoxAscent || 0,
+      descent: m.actualBoundingBoxDescent || 0};
+  }
+  function wrapParagraph(ctx, text) {
+    if (!text) return [measureLine(ctx, '')];
+    const chars = graphemes
+      ? Array.from(graphemes.segment(text), part => part.segment) : Array.from(text);
     const lines = [];
-    const words = text.trim().replace(/\r\n?/g,'\n').replace(/\n{2,}/g,'\n').split('\n');
-    for (const part of words) {
-      let line = '';
-      for (const char of part) {
-        if (line && ctx.measureText(line + char).width > maxWidth) {
-          lines.push(line);
-          line = '';
+    for (let start = 0; start < chars.length;) {
+      let end = start + 1;
+      while (end < chars.length &&
+          measureLine(ctx, chars.slice(start, end + 1).join('')).width <= titleBox.width) end++;
+      if (end < chars.length) {
+        // Prefer a complete Latin word. A word wider than the box wraps by grapheme.
+        let wordStart = end;
+        if (latinWord.test(chars[end])) {
+          while (wordStart > start && latinWord.test(chars[wordStart - 1])) wordStart--;
+          if (wordStart > start) end = wordStart;
         }
-        line += char;
+        if (end > start + 1 && (closingMark.test(chars[end]) || openingMark.test(chars[end - 1]))) end--;
       }
-      lines.push(line);
+      lines.push(measureLine(ctx, chars.slice(start, end).join('')));
+      start = end;
     }
     return lines;
+  }
+  function fitTitle(ctx, message) {
+    const paragraphs = message.replace(/\r\n?/g, '\n').split('\n');
+    function tryTier({size, leading, rows}, parts) {
+      const px = size * posterScale;
+      const lineHeight = leading * posterScale;
+      ctx.font = '600 ' + px + 'px ' + display;
+      const lines = parts.flatMap(line => wrapParagraph(ctx, line));
+      if (lines.length > rows || lines.some(line => line.width > titleBox.width)) return null;
+      const ascent = Math.max(...lines.map(line => line.ascent));
+      const descent = Math.max(...lines.map(line => line.descent));
+      const baseline = Math.max(ascent, (lineHeight - ascent - descent) / 2 + ascent);
+      const bottom = (lines.length - 1) * lineHeight + baseline + descent;
+      return bottom <= titleBox.height ? {lines, lineHeight, baseline} : null;
+    }
+    for (const tier of titleTiers) {
+      const fit = tryTier(tier, paragraphs);
+      if (fit) return fit;
+    }
+    // Reflow excessive hard breaks within the same title area. All submitted
+    // characters remain in the displayed blessing and original saved message.
+    const reflowed = [paragraphs.join(' ')];
+    for (let size = 30; size > 0; size--) {
+      const fit = tryTier({size, leading: size * 4 / 3, rows: 3}, reflowed);
+      if (fit) return fit;
+    }
+    throw new Error('祝福文字排版失败');
   }
   function greeting(ctx, atlas, message) {
     const match = typeset.indexOf(message);
@@ -78,27 +134,12 @@
       ctx.drawImage(atlas,0,294*match,1308,294,48,182,654,147);
       return;
     }
-    const characters = count(message);
-    let px = characters <= 10 ? 76 : characters <= 22 ? 52 : 38;
-    let lines;
-    let height;
-    do {
-      ctx.font = '600 ' + px + 'px ' + display;
-      lines = layoutLines(ctx,message,654);
-      height = Math.ceil(px*1.25);
-      if (lines.length*height <= 196) break;
-      px -= 1;
-    } while (px > 17);
-    // Very short hand-entered lines can exhaust the reserved title area.
-    // Reflow their hard breaks if the full blessing would otherwise be cropped.
-    if (lines.length*height > 196) {
-      px = 38; height = 48; ctx.font = '600 38px ' + display;
-      lines = layoutLines(ctx,message.replace(/\s+/g,' '),654);
-    }
     ctx.textAlign = 'left';
     ctx.fillStyle = '#30243f';
-    ctx.textBaseline = 'top';
-    lines.forEach((line,i) => ctx.fillText(line,48,188+i*height));
+    ctx.textBaseline = 'alphabetic';
+    const {lines, lineHeight, baseline} = fitTitle(ctx, message);
+    lines.forEach((line, i) => ctx.fillText(line.text, titleBox.x + line.inset,
+      titleBox.y + baseline + i * lineHeight));
   }
   function drawQR(ctx, modules) {
     const left = 597, top = 1114, size = 108;
@@ -188,14 +229,15 @@
   function photoFrame() {
     return '<div class="p-paper"><img data-photo alt=""><button type="button" data-loading class="p-loading" aria-live="polite">正在生成海报</button></div>';
   }
-  function edit(api) {
-    if(api.state.poster?.message) return view(api,'mine');
+  const fitExample = '十周年快乐！十周年快乐！十周年快乐，十周年快乐！';
+  function edit(api, trial = false) {
+    if(!trial && api.state.poster?.message) return view(api,'mine');
     const el=api.show('<section class="p-page">'+nav('制作祝福海报')+
       '<div class="p-editor"><canvas data-preview class="p-preview" aria-label="祝福海报预览"></canvas>'+
       '<div class="p-field"><label for="wish-text">写下你的祝福</label><textarea id="wish-text" rows="2" placeholder="把你的祝福写给下一个闪光的十年" aria-describedby="wish-count wish-error"></textarea>'+
       '<div class="p-meta"><span id="wish-error" aria-live="polite"></span><span id="wish-count"></span></div></div>'+
       '<div class="p-phrases"><button type="button" data-switch>换一句</button><button type="button" data-first>一路热爱</button><button type="button" data-next>未来可期</button></div>'+
-      '<button type="button" class="p-primary p-wide" data-confirm>保存并分享</button></div></section>');
+      '<button type="button" class="p-primary p-wide" data-confirm>'+(trial?'查看海报':'保存并分享')+'</button></div></section>');
     closeOn(el,api);
     const inp=el.querySelector('textarea'), note=el.querySelector('#wish-error'), counter=el.querySelector('#wish-count'), confirm=el.querySelector('[data-confirm]');
     const canvas=el.querySelector('[data-preview]');
@@ -215,9 +257,11 @@
     function select(index){ selected=index;inp.value=templates[index];refresh();}
     listen(el,'[data-switch]',()=>select((selected+1)%templates.length));
     listen(el,'[data-first]',()=>select(1)); listen(el,'[data-next]',()=>select(2));
-    inp.addEventListener('input',refresh); select(0);
+    inp.addEventListener('input',refresh);
+    inp.value=trial?fitExample:templates[0];refresh();
     confirm.addEventListener('click',()=>{
       const text=clean(inp.value); if(!text||count(inp.value)>50) return;
+      if(trial) return view(api,{...owner(api.state.location),message:text});
       if(api.state.poster?.message){ api.home();view(api,'mine');return; }
       const dialog=api.show('<section class="p-confirm"><h2>确认生成这张海报？</h2><p>保存后将无法修改祝福内容。</p>'+
         '<button type="button" class="p-primary p-wide" data-generate>确认生成海报</button>'+
@@ -300,8 +344,15 @@
   function openShared(api){
     const params = new URLSearchParams(location.hash.slice(1));
     const text=clean(params.get('wish'));
-    if(!text||count(text)>50)return false;
-    view(api,{...owner(window.CityLocations?.get(params.get('region'))),message:text});return true;
+    if(text && count(text)<=50) {
+      view(api,{...owner(window.CityLocations?.get(params.get('region'))),message:text});
+      return true;
+    }
+    if(new URLSearchParams(location.search).get('preview')==='poster-fit') {
+      edit(api,true);
+      return true;
+    }
+    return false;
   }
   window.PosterUI={edit,view,share,save,openShared};
 }());
