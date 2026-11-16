@@ -31,7 +31,7 @@
     const el = api.show(`<section class="extra-dialog extra-success" aria-labelledby="extra-light-title">
       <span class="extra-success-badge">${badge(true, 'extra-success-badge-image')}</span>
       <h2 id="extra-light-title">点亮成功</h2>
-      <p class="extra-success-city">你的热爱之地 <span aria-hidden="true">·</span> 上海</p>
+      <p class="extra-success-city">你的热爱之地 <span aria-hidden="true">·</span> </p>
       <dl class="extra-record"><dt>点亮序号</dt><dd>NO. 070260</dd></dl>
       <p class="extra-success-note">十周年勋章已收入「我的奖品」</p>
       <button class="extra-btn extra-primary" data-action="wish" type="button">
@@ -40,6 +40,7 @@
       </button>
       <button class="extra-btn extra-plain" data-action="later" type="button">关闭</button>
     </section>`, {modal:true});
+    el.querySelector('.extra-success-city').append(document.createTextNode(api.state.location?.name || '上海'));
     el.classList.add('extra-success-surface');
     bind(el, {wish:() => api.ownWish(), later:() => api.home()});
   }
@@ -83,13 +84,18 @@
 
   function territory(api) {
     const joined = Boolean(api.state.territoryJoined);
+    const region = api.state.location?.name || '上海';
+    const standing = window.getHomeRegionRank(region);
     const el = api.show(`<section class="extra-dialog extra-territory" aria-labelledby="extra-territory-title">
-      <h2 id="extra-territory-title">${joined ? '我的领地' : '加入上海领地'}</h2>
-      <p>${joined ? '上海领地已上榜，和同行的 Co 客一起点亮热爱。' : '加入后，在领地热力榜中查看自己的领地。'}</p>
-      <div class="extra-territory-row"><b>09</b><strong>上海领地</strong><span><b>4,380</b> 人点亮</span></div>
+      <h2 id="extra-territory-title">我的领地</h2>
+      <p>加入后，在领地热力榜中查看自己的领地。</p>
+      <div class="extra-territory-row"><b>${standing?.rank || '—'}</b><strong></strong><span>${standing ? '<b>'+standing.count+'</b> 人点亮' : '暂未上榜'}</span></div>
       <button type="button" data-action="join" class="extra-btn extra-primary">${joined ? '回到热力榜' : '加入领地'}</button>
       ${joined ? '' : '<button type="button" data-action="back" class="extra-btn extra-plain">留在活动</button>'}
     </section>`, {modal:true});
+    if (!joined) el.querySelector('h2').textContent = '加入'+region+'领地';
+    if (joined) el.querySelector('p').textContent = region+'领地'+(standing ? '已上榜' : '暂未上榜')+'，和同行的 Co 客一起点亮热爱。';
+    el.querySelector('.extra-territory-row strong').textContent = region+'领地';
     bind(el, {join:() => joined ? api.home() : api.joinTerritory(), back:() => api.close()});
   }
 

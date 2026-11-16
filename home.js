@@ -18,7 +18,7 @@
   let ignitionModule;
   function loadIgnition() {
     if (!ignitionModule) {
-      ignitionModule = import('./assets/home-ignite.mjs?v=orbit-1').catch(() => {
+      ignitionModule = import('./assets/home-ignite.mjs?v=city-location-1').catch(() => {
         ignitionModule = null;
         return null;
       });
@@ -57,7 +57,7 @@
         ids.forEach(id => {
           const mine = id === 'mine';
           const [name, text, region] = mine
-            ? ['我', state.poster.message.replace(/\s+/g, ' ').trim(), '上海']
+            ? ['我', state.poster.message.replace(/\s+/g, ' ').trim(), state.location?.name || '上海']
             : profiles[id];
           const button = document.createElement('button');
           button.type = 'button';
@@ -85,9 +85,68 @@
     });
   }
 
-  function rows(joined) {
+  // Pins in the approved artwork are measured on the uncropped 750-wide canvas.
+  // Regions with an existing landmark reuse that star. Others use the open foreground.
+  const regionPins = {'CN-SH':0, 'CN-ZJ':1, 'CN-GD':2, 'CN-BJ':3, GB:4, 'CN-FJ':6};
+  const personalPin = [407,1061,-.48];
+  function setPersonalPin(city, location, index, target) {
+    if (index === 0) return;
+    const pins = city.querySelector('.home-depth-pins');
+    const image = pins.querySelector('img');
+    const fallback = document.createElement('div');
+    fallback.className = 'home-fallback-pins';
+    city.querySelector('.home-city-image').after(fallback);
+    // Remove just the old labels from the transparent, high-resolution pin layer.
+    let holes = 'M531 896h182v46H531z';
+    if (index !== undefined) {
+      const [x,y] = target;
+      holes += 'M'+(x+24)+' '+(y-178-22)+'h92v44h-92z';
+    }
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 750 1052"><path fill="white" fill-rule="evenodd" d="M0 0H750V1052H0Z'+holes+'"/></svg>';
+    const mask = 'url("data:image/svg+xml,'+encodeURIComponent(svg)+'")';
+    image.style.maskImage = mask;
+    image.style.webkitMaskImage = mask;
+    image.style.maskSize = image.style.webkitMaskSize = '100% 100%';
+
+    function label(host, text, x, y, width, own) {
+      const tag = document.createElement('span');
+      tag.className = 'home-place-label' + (own ? ' is-personal' : '');
+      tag.textContent = text;
+      tag.title = text;
+      tag.style.left = x/750*100+'%';
+      tag.style.top = (y-178)/1052*100+'%';
+      tag.style.width = width/750*100+'%';
+      host.append(tag);
+    }
+    // The very first inline JPEG has baked-in labels. Cover its old personal pill
+    // until the separate artwork layers have decoded, including on a slow phone.
+    label(fallback,'上海',531,1096,178,false);
+    label(pins,'上海',532,1096,77,false);
+    const [x,y] = target;
+    const width = Math.min(265, Math.max(151, 106 + location.name.length*21));
+    const left = x+25+width > 744 ? x-25-width : x+25;
+    for (const layer of [fallback,pins]) {
+      if (index === undefined) {
+        const star = document.createElement('i');
+        star.className = 'home-new-pin';
+        star.style.left = (x-25)/750*100+'%';
+        star.style.top = (y-178-24)/1052*100+'%';
+        layer.append(star);
+      }
+      label(layer,location.name+' | 我的城市',left,y,width,true);
+    }
+    city.querySelector('.home-city-image').alt = '点亮你的城市，我的点亮位置：'+location.name+'。';
+  }
+
+  function rankFor(region) {
+    const index = standings.findIndex(([city]) => city === region);
+    return index < 0 ? null : {rank:String(index+1).padStart(2,'0'), count:standings[index][1]};
+  }
+  window.getHomeRegionRank = rankFor;
+
+  function rows(joined, region) {
     return standings.map(([city, count], index) => {
-      const mine = joined && city === '上海';
+      const mine = joined && city === region;
       const rank = String(index + 1).padStart(2, '0');
       return '<tr class="' + (index < 3 ? 'home-podium home-podium-' + rank : '') +
         (mine ? ' home-ranked-mine' : '') + '"><td><span class="home-rank-number">' + rank +
@@ -100,6 +159,10 @@
   window.renderHome = function renderHome(container, api) {
     const state = api.state;
     const joined = Boolean(state.territoryJoined);
+    const location = state.location || {id:'CN-SH',name:'上海'};
+    const regionRank = joined && rankFor(location.name);
+    const pinIndex = regionPins[location.id];
+    const targetPin = stars[pinIndex] || personalPin;
     const root = document.createElement('div');
     root.className = 'home-screen';
     root.innerHTML = `
@@ -164,9 +227,9 @@
         <p class="home-update">每天10:00更新前一日数据</p>
         <table class="home-rank-table">
           <thead><tr><th scope="col">排名</th><th scope="col">Co客领地</th><th scope="col">已点亮人数</th></tr></thead>
-          <tbody>${rows(joined)}</tbody>
+          <tbody>${rows(joined, location.name)}</tbody>
         </table>
-        <div class="home-my-rank"><span>${joined ? '03' : '—'}</span><strong>${joined ? '上海领地' : '我的领地'}</strong><span>${joined ? '8,960' : '待加入'}</span></div>
+        <div class="home-my-rank"><span>${regionRank ? regionRank.rank : '—'}</span><strong>我的领地</strong><span>${regionRank ? regionRank.count : joined ? '未上榜' : '待加入'}</span></div>
         <button type="button" class="home-join" data-home-action="territory">${joined ? '查看我的领地' : '加入领地'}</button>
       </section>
       <footer class="home-footer">十年同行，热爱成光</footer>`;
@@ -176,9 +239,14 @@
     const primary = root.querySelector('[data-home-action="ignite"]');
     const fallback = city.querySelector('.home-city-image');
     fallback.src = firstPaintSrc;
+    setPersonalPin(city, location, pinIndex, targetPin);
+    if (joined) root.querySelector('.home-my-rank strong').textContent = location.name+'领地';
     const lights = city.querySelector('.home-star-lights');
     const quietLight = city.querySelector('.home-quiet-light');
-    stars.forEach(([x, y, delay]) => {
+    quietLight.style.left = targetPin[0] / 750 * 100 + '%';
+    quietLight.style.top = (targetPin[1]-178) / 1052 * 100 + '%';
+    const visibleStars = pinIndex === undefined ? [...stars,personalPin] : stars;
+    visibleStars.forEach(([x, y, delay]) => {
       const star = document.createElement('span');
       star.className = 'home-glint';
       star.setAttribute('aria-hidden', 'true');
@@ -259,7 +327,7 @@
         if (reducedMotion.matches) { showQuietLight(); return; }
         const elapsed = (now - start) / 1000;
         if (elapsed < motion.IGNITION_DURATION) {
-          motion.drawCityIgnition(canvas, elapsed);
+          motion.drawCityIgnition(canvas, elapsed, targetPin);
           animationFrame = requestAnimationFrame(tick);
         } else {
           finish();
@@ -267,6 +335,7 @@
       }
       animationFrame = requestAnimationFrame(tick);
     }
+    container.addEventListener('lightup:confirmed', playIgnition);
     root.addEventListener('click', event => {
       const target = event.target.closest('button');
       if (!target || target.disabled) return;
@@ -286,6 +355,7 @@
       }
     });
     return function cleanHome() {
+      container.removeEventListener('lightup:confirmed', playIgnition);
       active = false;
       cancelIgnition();
       tilt?.destroy();

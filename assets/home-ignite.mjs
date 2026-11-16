@@ -55,11 +55,27 @@ function makeTrack(segments) {
   }
   return {points,length:distance};
 }
-const flight = makeTrack([
+const originalFlight = makeTrack([
   [[713,438],[643,466],[569,481],[426,539]],
   [[426,539],[213,622],[17,712],[49,824]],
   [[49,824],[76,914],[346,1027],SHANGHAI]
 ]);
+// A corrected landmark has its own arrival point; cache the path between frames.
+let lastTarget, lastFlight;
+function flightTo(target) {
+  const [x,y] = target;
+  if (x === SHANGHAI[0] && y === SHANGHAI[1]) return originalFlight;
+  if (lastTarget && lastTarget[0] === x && lastTarget[1] === y) return lastFlight;
+  const entersLeft = x > 375;
+  const start = entersLeft ? [-24,425] : [774,425];
+  const bend = entersLeft ? [198,620] : [552,620];
+  lastFlight = makeTrack([
+    [start, [start[0],523], [bend[0]*.74+start[0]*.26,632], bend],
+    [bend, [bend[0]+(entersLeft?134:-134),608], [x+(entersLeft?-96:96),y-60], [x,y]]
+  ]);
+  lastTarget = target;
+  return lastFlight;
+}
 // The ring echoes travel in opposite directions along the near edge of the road.
 const frontArc = makeTrack([
   [[613,1000],[446,1007],[116,951],[38,850]],
@@ -102,7 +118,7 @@ function ribbon(ctx,track,head,tail,width,offset,rgb,alpha) {
   for(let i=other.length-1;i>=0;i--) ctx.lineTo(...other[i]);
   ctx.closePath(); ctx.fillStyle=grad; ctx.fill();
 }
-function meteor(ctx,t) {
+function meteor(ctx,t,flight) {
   if(t>=IMPACT+.22) return;
   const travel=clamp((t-.14)/(IMPACT-.14));
   const u=travel*(.43+.57*travel);
@@ -116,9 +132,8 @@ function meteor(ctx,t) {
   glow(ctx,headPoint.x,headPoint.y,22+25*u,mint,energy*.78);
   glint(ctx,headPoint.x,headPoint.y,9+11*u,energy);
 }
-function impact(ctx,age) {
+function impact(ctx,age,[x,y]) {
   if(age<0 || age>1.23) return;
-  const [x,y]=SHANGHAI;
   const burst=(1-fade(age,.03,.64));
   glow(ctx,x,y,90+46*fade(age,0,.43),mint,burst*.65);
   for(const [offset,turn] of [[0,-.27],[.13,.18]]) {
@@ -182,7 +197,7 @@ function beginFrame(canvas) {
   ctx.save();ctx.scale(canvas.width/WIDTH,canvas.height/HEIGHT);ctx.translate(0,-CROP_TOP);
   return ctx;
 }
-export function drawCityIgnition(canvas,time) {
+export function drawCityIgnition(canvas,time,target=SHANGHAI) {
   const ctx=beginFrame(canvas);
   // A gradual local exposure shift keeps the white meteor legible on lavender.
   const focus=fade(time,0,.55)*(1-fade(time,IMPACT+.05,IGNITION_DURATION-.03));
@@ -191,6 +206,6 @@ export function drawCityIgnition(canvas,time) {
   dusk.addColorStop(.79,rgba(ink,.22*focus));dusk.addColorStop(1,rgba(ink,0));
   ctx.fillStyle=dusk;ctx.fillRect(0,380,WIDTH,800);
   const age=time-IMPACT;
-  rimPulse(ctx,age);buildings(ctx,age);meteor(ctx,time);impact(ctx,age);
+  rimPulse(ctx,age);buildings(ctx,age);meteor(ctx,time,flightTo(target));impact(ctx,age,target);
   ctx.restore();
 }

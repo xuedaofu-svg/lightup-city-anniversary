@@ -4,13 +4,18 @@
   const layerRoot = document.getElementById('layers');
   const feedback = document.getElementById('feedback');
   const key = 'lynk-city-lightup-h5-v1';
-  const state = {lit: false, litAt: null, poster: null, territoryJoined: false};
+  const catalog = window.CityLocations;
+  const shanghai = catalog?.get('CN-SH') || {id: 'CN-SH', name: '上海', en: 'Shanghai'};
+  const state = {lit: false, litAt: null, poster: null, location: shanghai, territoryJoined: false, joinedTerritoryId: null};
   try {
     const saved = JSON.parse(localStorage.getItem(key) || '{}');
     if (saved && typeof saved === 'object') {
       state.lit = saved.lit === true;
       state.litAt = saved.litAt || null;
-      state.territoryJoined = saved.territoryJoined === true;
+      state.location = catalog?.get(saved.location?.id) || shanghai;
+      state.joinedTerritoryId = catalog?.get(saved.joinedTerritoryId)?.id
+        || (saved.territoryJoined === true ? state.location.id : null);
+      state.territoryJoined = state.joinedTerritoryId === state.location.id;
       if (state.lit && saved.poster && typeof saved.poster.message === 'string'
           && saved.poster.message.trim() && [...saved.poster.message].length <= 50) {
         state.poster = saved.poster;
@@ -67,6 +72,7 @@
   function popLayer() {
     const old = layers.pop();
     if (!old) return;
+    old.onDispose?.();
     old.element.remove();
     syncVisibility();
     if (!layers.length) {
@@ -81,6 +87,9 @@
     popLayer();
     releaseGateWhenIdle();
   }
+  function requestClose() {
+    if (!layers.at(-1)?.onBack?.()) close();
+  }
   function home() {
     while (layers.length) popLayer();
     drawHome();
@@ -89,7 +98,11 @@
   function show(html, options = {}) {
     const origin = document.activeElement;
     if (!layers.length) savedScroll = window.scrollY;
-    if (options.replace && layers.length) layers.pop().element.remove();
+    if (options.replace && layers.length) {
+      const replaced = layers.pop();
+      replaced.onDispose?.();
+      replaced.element.remove();
+    }
     const element = document.createElement('div');
     element.className = 'app-layer' + (options.sheet ? ' app-layer--sheet' : options.modal ? ' app-layer--modal' : '');
     const surface = document.createElement('section');
@@ -101,9 +114,9 @@
     surface.setAttribute('aria-label', surface.querySelector('h1,h2,h3')?.textContent?.trim() || options.title || '活动详情');
     element.append(surface);
     layerRoot.append(element);
-    layers.push({element, origin});
+    layers.push({element, origin, onBack: options.onBack, onDispose: options.onDispose});
     if (options.modal || options.sheet) element.addEventListener('click', e => {
-      if (e.target === element && element === layers.at(-1)?.element) close();
+      if (e.target === element && element === layers.at(-1)?.element) requestClose();
     });
     syncVisibility();
     pushGate();
@@ -112,11 +125,11 @@
   }
   window.addEventListener('popstate', () => {
     if (releasingGate) releasingGate = false;
-    else if (layers.length) popLayer();
+    else if (layers.length && !layers.at(-1).onBack?.()) popLayer();
     if (layers.length) pushGate();
   });
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape' && layers.length) { e.preventDefault(); close(); }
+    if (e.key === 'Escape' && layers.length) { e.preventDefault(); requestClose(); }
     if (e.key !== 'Tab' || !layers.length) return;
     const focusable = [...layers.at(-1).element.querySelectorAll('button:not(:disabled), a[href], textarea, input, [tabindex="0"]')]
       .filter(n => n.getClientRects().length);
@@ -148,8 +161,21 @@
   }
   const api = {
     state, show, close, home, toast, ownWish,
-    prepareIgnite(onConfirmed) {
-      ask('点亮我的城市', '本次原型体验的热爱之地为上海。点亮后即可领取十周年限定勋章。', '点亮上海', onConfirmed);
+    prepareIgnite() {
+      const light = () => main.dispatchEvent(new Event('lightup:confirmed'));
+      if (!catalog) {
+        ask('点亮我的城市', '当前位置为上海，点亮后即可领取十周年限定勋章。', '点亮上海', light);
+        return;
+      }
+      catalog.open({
+        current: state.location, show, close, light,
+        save(location) {
+          state.location = location;
+          state.territoryJoined = state.joinedTerritoryId === location.id;
+          persist();
+          drawHome();
+        }
+      });
     },
     ignite() {
       if (!state.lit) {
@@ -181,9 +207,10 @@
     territory() { return window.ExtraUI.territory(api); },
     joinTerritory() {
       state.territoryJoined = true;
+      state.joinedTerritoryId = state.location.id;
       persist();
       home();
-      toast('已加入上海领地');
+      toast('已加入' + state.location.name + '领地');
     },
     goToLight,
     back() {

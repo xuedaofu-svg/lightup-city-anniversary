@@ -14,7 +14,9 @@
     xingxing: {name:'星星', initial:'星', region:'广东', english:'GUANGDONG', message:'一起点亮未来'},
     alex: {name:'Alex', initial:'A', region:'德国', english:'GERMANY', message:'Happy 10th'}
   };
-  const mine = {name:'小明', initial:'明', region:'上海', english:'SHANGHAI'};
+  function owner(place) {
+    return {name:'小明', initial:'明', region:place?.name || '上海', english:(place?.en || 'Shanghai').toUpperCase(), locationId:place?.id || 'CN-SH', serial:true};
+  }
   const count = text => Array.from(text).length;
   const clean = text => String(text || '').trim();
   const activityURL = () => {
@@ -23,11 +25,12 @@
     url.search = '';
     return url.href;
   };
-  const sharedURL = message => activityURL() + '#wish=' + encodeURIComponent(clean(message));
+  const sharedURL = data => activityURL() + '#wish=' + encodeURIComponent(clean(data.message)) +
+    (data.locationId === 'CN-SH' ? '' : '&region=' + encodeURIComponent(data.locationId));
 
   function person(api, who) {
     if (typeof who === 'object' && who && typeof who.message === 'string') return who;
-    return senders[who] || {...mine, message: api.state.poster?.message || defaultWish};
+    return senders[who] || {...owner(api.state.location), message: api.state.poster?.message || defaultWish};
   }
   function image(name) {
     return new Promise((resolve,reject) => {
@@ -45,12 +48,13 @@
     ]).catch(error => { materials = null; throw error; });
     return materials;
   }
-  function write(ctx, text, x, y, px, weight, color, align = 'left') {
+  function write(ctx, text, x, y, px, weight, color, align = 'left', maxWidth) {
     ctx.font = weight + ' ' + px + 'px ' + general;
     ctx.fillStyle = color;
     ctx.textAlign = align;
     ctx.textBaseline = 'top';
-    ctx.fillText(text,x,y);
+    if (maxWidth) ctx.fillText(text,x,y,maxWidth);
+    else ctx.fillText(text,x,y);
   }
   function layoutLines(ctx, text, maxWidth) {
     const lines = [];
@@ -120,7 +124,7 @@
     c.drawImage(ten,616,40,86,58);
     write(c,'10TH ANNIVERSARY',602,52,13,600,'#584d65','right');
     write(c,'LIGHT UP YOUR CITY',602,70,13,600,'#584d65','right');
-    write(c,data.english+'  /  '+data.region+'领地',48,141,17,550,'#554966');
+    write(c,data.english+'  /  '+data.region+'领地',48,141,17,550,'#554966','left',652);
     greeting(c,atlas,data.message || placeholder);
     c.save();
     c.beginPath(); c.rect(0,1080,750,220); c.clip();
@@ -141,7 +145,7 @@
     c.beginPath(); c.arc(73,1236,25,0,Math.PI*2); c.fillStyle='#e5dfef'; c.fill();
     write(c,data.initial,73,1222,24,550,'#514165','center');
     write(c,data.name+'的十周年祝福',112,1206,23,600,'#30243f');
-    const footer=data.region==='上海'?'与你同行  ·  NO. 070260':'与热爱同行  ·  点亮'+data.region;
+    const footer=data.serial?'与你同行  ·  NO. 070260':'与热爱同行  ·  点亮'+data.region;
     write(c,footer,112,1243,17,400,'#51465f');
     drawQR(c,qr);
     write(c,'扫码点亮热爱',651,1234,15,400,'#51465f','center');
@@ -205,7 +209,7 @@
       const id=++revision;
       cancelAnimationFrame(raf);
       raf=requestAnimationFrame(()=>preload().then(()=>{
-        if(el.isConnected&&id===revision) return draw(canvas,{...mine,message:Array.from(clean(value)).slice(0,50).join('')||placeholder});
+        if(el.isConnected&&id===revision) return draw(canvas,{...owner(api.state.location),message:Array.from(clean(value)).slice(0,50).join('')||placeholder});
       }).catch(()=>{note.textContent='预览加载失败，可重新打开海报';}));
     }
     function select(index){ selected=index;inp.value=templates[index];refresh();}
@@ -223,7 +227,7 @@
         const button=dialog.querySelector('[data-generate]');
         button.disabled=true;button.textContent='正在生成…';
         try {
-          await output({...mine,message:text});
+          await output({...owner(api.state.location),message:text});
           if(!dialog.isConnected) return;
           if(!api.state.poster?.message)api.savePoster({message:text});
           api.home();view(api,'mine');
@@ -266,7 +270,7 @@
   }
   function share(api) {
     if(!api.state.poster?.message) return edit(api);
-    const data=person(api,'mine'), url=sharedURL(data.message);
+    const data=person(api,'mine'), url=sharedURL(data);
     const channels=[['friend','微信好友'],['moments','分享朋友圈'],['save','保存图片'],['link','复制链接']];
     const el=api.show('<section class="p-sheet"><h2>分享到</h2><div class="p-channels">'+channels.map(([id,name])=>
       '<button type="button" data-channel="'+id+'"><span class="p-icon p-'+id+'">'+icons[id]+'</span>'+name+'</button>').join('')+
@@ -294,9 +298,10 @@
     el.querySelectorAll('[data-channel]').forEach(b=>b.addEventListener('click',()=>send(b.dataset.channel)));
   }
   function openShared(api){
-    const text=clean(new URLSearchParams(location.hash.slice(1)).get('wish'));
+    const params = new URLSearchParams(location.hash.slice(1));
+    const text=clean(params.get('wish'));
     if(!text||count(text)>50)return false;
-    view(api,{...mine,message:text});return true;
+    view(api,{...owner(window.CityLocations?.get(params.get('region'))),message:text});return true;
   }
   window.PosterUI={edit,view,share,save,openShared};
 }());
