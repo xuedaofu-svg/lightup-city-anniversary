@@ -16,15 +16,19 @@
   function owner(place) {
     return {name:'小明', initial:'明', region:place?.name || '上海', english:(place?.en || 'Shanghai').toUpperCase(), locationId:place?.id || 'CN-SH', serial:true};
   }
-  const count = text => Array.from(text).length;
-  const clean = text => String(text || '').trim();
+  const maxWishLength = 50;
+  const normalizeMessage = text => typeof text === 'string' ? text.replace(/\r\n?/g, '\n').trim() : '';
+  function isValidMessage(text) {
+    const length = letters(normalizeMessage(text)).length;
+    return length > 0 && length <= maxWishLength;
+  }
   const activityURL = () => {
     const url = new URL(location.href);
     url.hash = '';
     url.search = '';
     return url.href;
   };
-  const sharedURL = data => activityURL() + '#wish=' + encodeURIComponent(clean(data.message)) +
+  const sharedURL = data => activityURL() + '#wish=' + encodeURIComponent(normalizeMessage(data.message)) +
     (data.locationId === 'CN-SH' ? '' : '&region=' + encodeURIComponent(data.locationId));
 
   function person(api, who) {
@@ -60,9 +64,9 @@
   const posterScale = 750 / 606;
   const titleBox = {x: 48, y: 182, width: 654, height: 196};
   const titleTiers = [
-    {size: 64, leading: 85, minRows: 1, maxRows: 1},
-    {size: 42, leading: 52, minRows: 2, maxRows: 3},
-    {size: 30, leading: 38, minRows: 4, maxRows: 4}
+    {maxChars: 8, size: 64, leading: 74},
+    {maxChars: 36, size: 42, leading: 52},
+    {maxChars: maxWishLength, size: 32, leading: 42}
   ];
   const graphemes = typeof Intl.Segmenter === 'function'
     ? new Intl.Segmenter(undefined, {granularity: 'grapheme'}) : null;
@@ -78,17 +82,31 @@
       descent: m.actualBoundingBoxDescent || 0};
   }
   function letters(text) {
-    return graphemes
-      ? Array.from(graphemes.segment(text), part => part.segment) : Array.from(text);
+    if (graphemes) return Array.from(graphemes.segment(text), part => part.segment);
+    // Older WebViews lack Intl.Segmenter. Keep combined accents, emoji sequences
+    // (including skin tones, keycaps, and family ZWJs), and flag pairs together.
+    const clusters = [];
+    const regional = /^[\u{1F1E6}-\u{1F1FF}]$/u;
+    const extension = /[\p{M}\u200D\u{1F3FB}-\u{1F3FF}\u{E0020}-\u{E007F}]/u;
+    for (const ch of text) {
+      const last = clusters[clusters.length - 1];
+      if (ch !== '\n' && last && last !== '\n' &&
+          (extension.test(ch) || last.endsWith('\u200D') || (regional.test(last) && regional.test(ch)))) {
+        clusters[clusters.length - 1] += ch;
+      } else {
+        clusters.push(ch);
+      }
+    }
+    return clusters;
   }
-  function wrapParagraph(ctx, text) {
+  function wrapParagraph(ctx, text, preferWords = true) {
     const chars = letters(text);
     const lines = [];
     for (let start = 0; start < chars.length;) {
       let end = start + 1;
       while (end < chars.length &&
           measureLine(ctx, chars.slice(start, end + 1).join('')).width <= titleBox.width) end++;
-      if (end < chars.length) {
+      if (preferWords && end < chars.length) {
         // Prefer a complete Latin word. A word wider than the box wraps by grapheme.
         let wordStart = end;
         if (latinWord.test(chars[end])) {
@@ -102,85 +120,65 @@
     }
     return lines;
   }
-  // Find an even, readable set of breaks for a specified number of lines.
-  // Scores are in font-size units so preview and 2× export choose identical cuts.
-  function balancedLines(ctx, text, rows, px, allowCompression) {
-    const chars = letters(text);
-    const idealWidth = ctx.measureText(text).width / rows;
-    const memo = new Map();
-    function choose(start, left) {
-      if (left === 0) return start === chars.length ? {cost: 0, lines: []} : null;
-      const key = start + '/' + left;
-      if (memo.has(key)) return memo.get(key);
+  function balanceShortLastLine(ctx, paragraph, lines, px) {
+    const rows = lines.length;
+    if (rows < 2 || lines[rows - 1].width > titleBox.width * 0.45) return lines;
+    // A very short last line can be balanced at the same size and natural row count.
+    const chars = letters(paragraph);
+    const targetWidth = ctx.measureText(paragraph).width / rows;
+    const cache = new Map();
+    function layout(start, remaining) {
+      if (remaining === 0) return start === chars.length ? {cost: 0, lines: []} : null;
+      const key = start + '/' + remaining;
+      if (cache.has(key)) return cache.get(key);
       let best = null;
-      for (let end = start + 1; end <= chars.length - left + 1; end++) {
-        if (left === 1 && end < chars.length) continue;
+      for (let end = start + 1; end <= chars.length - remaining + 1; end++) {
         const line = measureLine(ctx, chars.slice(start, end).join(''));
-        const over = Math.max(0, line.width - titleBox.width);
-        if (over > 0 && !allowCompression) continue;
-        const rest = choose(end, left - 1);
+        if (line.width > titleBox.width) break;
+        if (remaining === 1 && end !== chars.length) continue;
+        const rest = layout(end, remaining - 1);
         if (!rest) continue;
-        let cost = rest.cost + ((line.width - idealWidth) / px) ** 2 + 100 * (over / px) ** 2;
+        let cost = rest.cost + ((line.width - targetWidth) / px) ** 2;
         if (end < chars.length) {
-          const before = chars[end - 1], after = chars[end];
-          if (closingMark.test(after) || openingMark.test(before)) cost += 150;
-          if (latinWord.test(before) && latinWord.test(after)) cost += 80;
-          if (!/[，。、！？；：,.!?;:\s]$/.test(before)) cost += 14;
+          if (closingMark.test(chars[end]) || openingMark.test(chars[end - 1])) cost += 150;
+          if (latinWord.test(chars[end - 1]) && latinWord.test(chars[end])) cost += 80;
+          if (!/[，。、！？；：,.!?;:\s]$/.test(chars[end - 1])) cost += 10;
         }
         if (!best || cost < best.cost) best = {cost, lines: [line, ...rest.lines]};
       }
-      memo.set(key, best);
+      cache.set(key, best);
       return best;
     }
-    return choose(0, rows)?.lines;
+    return layout(0, rows)?.lines || lines;
   }
   function fitTitle(ctx, message) {
-    const paragraphs = message.split(/\r\n?|\n/).map(line => line.trim()).filter(Boolean);
-    for (const tier of titleTiers) {
-      const px = tier.size * posterScale;
-      const lineHeight = tier.leading * posterScale;
-      ctx.font = '600 ' + px + 'px ' + display;
-      const small = tier === titleTiers[2];
-      let blocks = paragraphs.map(text => ({text, lines: wrapParagraph(ctx, text)}));
-      let count = blocks.reduce((sum, block) => sum + block.lines.length, 0);
-      if (count > tier.maxRows) {
-        if (!small) continue;
-        // When manual breaks would cross the skyline, reflow the display copy.
-        const text = paragraphs.join(' ');
-        const lines = balancedLines(ctx, text, tier.maxRows, px, true);
-        blocks = [{text, lines}];
-        count = lines.length;
-      }
-      // Keep an authored newline whenever it fits. Allocate additional lines to
-      // the widest paragraph until a medium greeting has ≥2 or a small one has 4.
-      const rows = blocks.map(block => block.lines.length);
-      while (count < tier.minRows) {
-        let widest = -1, maxWidth = -1;
-        blocks.forEach((block, i) => {
-          const width = ctx.measureText(block.text).width / rows[i];
-          if (rows[i] < letters(block.text).length && width > maxWidth) {
-            widest = i; maxWidth = width;
-          }
-        });
-        if (widest < 0) break;
-        rows[widest]++; count++;
-      }
-      const lines = blocks.flatMap((block, i) => {
-        const widths = block.lines.map(line => line.width);
-        const ragged = Math.min(...widths) < Math.max(...widths) * 0.55;
-        if (rows[i] !== block.lines.length || ragged) {
-          return balancedLines(ctx, block.text, rows[i], px, small) || block.lines;
-        }
-        return block.lines;
-      });
-      const ascent = Math.max(...lines.map(line => line.ascent));
-      const descent = Math.max(...lines.map(line => line.descent));
-      const baseline = Math.max(ascent, (lineHeight - ascent - descent) / 2 + ascent);
-      const bottom = (lines.length - 1) * lineHeight + baseline + descent;
-      if (bottom <= titleBox.height || small) {
-        return {lines, lineHeight, baseline, inkHeight: bottom};
-      }
+    const text = normalizeMessage(message);
+    const length = letters(text).length;
+    const tier = titleTiers.find(item => length <= item.maxChars) || titleTiers[2];
+    const px = tier.size * posterScale;
+    const lineHeight = tier.leading * posterScale;
+    ctx.font = '600 ' + px + 'px ' + display;
+    const maxRows = Math.max(1, Math.floor((titleBox.height - px) / lineHeight) + 1);
+    function wrap(text, preferWords = true) {
+      const rawLines = wrapParagraph(ctx, text, preferWords);
+      return balanceShortLastLine(ctx, text, rawLines, px);
     }
+    let lines = text.split('\n').flatMap(line => line ? wrap(line) : [measureLine(ctx, '')]);
+    if (lines.length > maxRows) {
+      // Preserve the stored message. Reflow only this drawing if authored breaks
+      // or word-boundary choices would otherwise cross the skyline.
+      const reflowed = text.replace(/\n+/g, ' ');
+      lines = wrap(reflowed);
+      if (lines.length > maxRows) lines = wrap(reflowed, false);
+    }
+    const ascent = Math.max(...lines.map(line => line.ascent));
+    const descent = Math.max(...lines.map(line => line.descent));
+    // Use existing vertical padding first, then tighten leading only for outlier glyphs.
+    const pitch = lines.length > 1
+      ? Math.min(lineHeight, (titleBox.height - ascent - descent) / (lines.length - 1)) : lineHeight;
+    const baseline = Math.min(Math.max(ascent, (lineHeight + ascent - descent) / 2),
+      Math.max(ascent, titleBox.height - descent - (lines.length - 1) * pitch));
+    return {lines, lineHeight: pitch, baseline, inkHeight: (lines.length - 1) * pitch + baseline + descent};
   }
   function greeting(ctx, message) {
     ctx.textAlign = 'left';
@@ -294,9 +292,9 @@
   function photoFrame() {
     return '<div class="p-paper"><img data-photo alt=""><button type="button" data-loading class="p-loading" aria-live="polite">正在生成海报</button></div>';
   }
-  const fitExample = '十周年快乐！十周年快乐！十周年快乐，十周年快乐！';
+  const fitExample = '新年快乐，万事顺意 🎉';
   const trialMessages = [
-    '愿每座城都有星光',
+    '愿每一座城有星光！',
     '愿每一座城都亮起一盏灯。愿每一段路都有朋友同行。下一个十年，我们再出发。',
     '十年前，我们在杭州第一次出发。十年后，想和你沿着钱塘江再走一程，看看这座城的灯，也看看一路同行的你。'
   ];
@@ -312,7 +310,7 @@
     const inp=el.querySelector('textarea'), note=el.querySelector('#wish-error'), counter=el.querySelector('#wish-count'), confirm=el.querySelector('[data-confirm]');
     const canvas=el.querySelector('[data-preview]');
     if (trial) {
-      const labels = ['单行', '三行', '50 字'];
+      const labels = trialMessages.map(message => letters(message).length + ' 字');
       el.querySelectorAll('.p-phrases button').forEach((button, i) => {
         button.textContent = labels[i];
         button.addEventListener('click', () => {inp.value = trialMessages[i]; refresh();});
@@ -320,15 +318,15 @@
     }
     let selected=0, raf=0, revision=0;
     function refresh() {
-      const value=inp.value, n=count(value);
-      counter.textContent=n+' / 50';
-      confirm.disabled=!clean(value)||n>50;
-      inp.setAttribute('aria-invalid',String(n>50));
-      note.textContent=n>50?'祝福最多可写 50 个字':'';
+      const characters=letters(normalizeMessage(inp.value)), n=characters.length;
+      counter.textContent=n+' / '+maxWishLength;
+      confirm.disabled=n===0||n>maxWishLength;
+      inp.setAttribute('aria-invalid',String(n>maxWishLength));
+      note.textContent=n>maxWishLength?'祝福最多可写 50 个字':'';
       const id=++revision;
       cancelAnimationFrame(raf);
       raf=requestAnimationFrame(()=>preload().then(()=>{
-        if(el.isConnected&&id===revision) return draw(canvas,{...owner(api.state.location),message:Array.from(clean(value)).slice(0,50).join('')||placeholder});
+        if(el.isConnected&&id===revision) return draw(canvas,{...owner(api.state.location),message:characters.slice(0,maxWishLength).join('')||placeholder});
       }).catch(()=>{note.textContent='预览加载失败，可重新打开海报';}));
     }
     function select(index){ selected=index;inp.value=templates[index];refresh();}
@@ -339,7 +337,7 @@
     inp.addEventListener('input',refresh);
     inp.value=trial?fitExample:templates[0];refresh();
     confirm.addEventListener('click',()=>{
-      const text=clean(inp.value); if(!text||count(inp.value)>50) return;
+      const text=normalizeMessage(inp.value); if(!isValidMessage(text)) return;
       if(trial) return view(api,{...owner(api.state.location),message:text});
       if(api.state.poster?.message){ api.home();view(api,'mine');return; }
       const dialog=api.show('<section class="p-confirm"><h2>确认生成这张海报？</h2><p>保存后将无法修改祝福内容。</p>'+
@@ -422,8 +420,8 @@
   }
   function openShared(api){
     const params = new URLSearchParams(location.hash.slice(1));
-    const text=clean(params.get('wish'));
-    if(text && count(text)<=50) {
+    const text=normalizeMessage(params.get('wish'));
+    if(isValidMessage(text)) {
       view(api,{...owner(window.CityLocations?.get(params.get('region'))),message:text});
       return true;
     }
@@ -433,5 +431,5 @@
     }
     return false;
   }
-  window.PosterUI={edit,view,share,save,openShared};
+  window.PosterUI={edit,view,share,save,openShared,normalizeMessage,isValidMessage};
 }());

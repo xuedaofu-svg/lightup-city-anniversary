@@ -16,9 +16,8 @@
       state.joinedTerritoryId = catalog?.get(saved.joinedTerritoryId)?.id
         || (saved.territoryJoined === true ? state.location.id : null);
       state.territoryJoined = state.joinedTerritoryId === state.location.id;
-      if (state.lit && saved.poster && typeof saved.poster.message === 'string'
-          && saved.poster.message.trim() && [...saved.poster.message].length <= 50) {
-        state.poster = saved.poster;
+      if (state.lit && window.PosterUI.isValidMessage(saved.poster?.message)) {
+        state.poster = {...saved.poster, message: window.PosterUI.normalizeMessage(saved.poster.message)};
       }
     }
   } catch { /* A fresh tab can run the prototype even without browser storage. */ }
@@ -186,10 +185,8 @@
       window.ExtraUI.success(api);
     },
     savePoster(poster) {
-      if (!state.lit || !poster || typeof poster.message !== 'string') return false;
-      const message = poster.message.trim();
-      if (state.poster || !message || [...message].length > 50) return false;
-      state.poster = {...poster, message};
+      if (!state.lit || state.poster || !window.PosterUI.isValidMessage(poster?.message)) return false;
+      state.poster = {...poster, message: window.PosterUI.normalizeMessage(poster.message)};
       persist();
       return true;
     },
